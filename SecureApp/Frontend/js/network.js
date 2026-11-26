@@ -5,7 +5,7 @@
 import { state } from './state.js';
 import { encrypt, decrypt } from './encryption.js';
 import { handlePing, handlePong, handleOnlineAnnouncement, handleOfflineAnnouncement, updateStatus, addContact } from './contacts.js';
-import { handleIncomingMessage, handleTyping, handleReadReceipt } from './chat.js';
+import { handleIncomingMessage, handleTyping, handleReadReceipt, handleDeleteMessage } from './chat.js';
 import { handleSignal } from './webrtc.js';
 
 export function connect(onOpen) {
@@ -43,6 +43,9 @@ async function onMessage(e) {
 
     // Read receipts
     if (data.type === 'read' && data.target === state.myUsername) return handleReadReceipt(data);
+
+    // Message deletion
+    if (data.type === 'delete' && data.target === state.myUsername) return handleDeleteMessage(data);
 
     // Everything else (messages / typing), addressed to us or broadcast
     if (data.user !== state.myUsername && (!data.target || data.target === state.myUsername || data.target === 'all')) {

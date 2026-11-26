@@ -125,6 +125,7 @@ function hideTyping(user) {
 export function renderMsg(user, content, cls, time, type, fname, msgId, status) {
     const div = document.createElement('div');
     div.className = `message ${cls}`;
+    div.id = `msg-${msgId}`;
 
     if (cls === 'partner-message') {
         const senderEl = document.createElement('span');
@@ -169,6 +170,15 @@ export function renderMsg(user, content, cls, time, type, fname, msgId, status) 
     footer.appendChild(timestamp);
 
     if (cls === 'my-message') {
+        const delBtn = document.createElement('button');
+        delBtn.className = 'msg-delete';
+        delBtn.title = 'Delete message';
+        delBtn.textContent = '🗑️';
+        delBtn.addEventListener('click', () => deleteMyMessage(msgId));
+        footer.insertBefore(delBtn, timestamp);
+    }
+
+    if (cls === 'my-message') {
         const tickClass = status === 'read' ? 'tick-read' : 'tick-sent';
         const tickText = status === 'read' ? '✓✓' : '✓';
         const statusEl = document.createElement('span');
@@ -182,6 +192,34 @@ export function renderMsg(user, content, cls, time, type, fname, msgId, status) 
     const m = $('messages');
     m.appendChild(div);
     m.scrollTop = m.scrollHeight;
+}
+
+// --- DELETE MESSAGES ---
+
+function removeMessage(contact, msgId) {
+    const history = state.chatHistory[contact];
+    if (history) {
+        state.chatHistory[contact] = history.filter(m => m.id !== msgId);
+        persistHistory();
+    }
+    $(`msg-${msgId}`)?.remove();
+}
+
+// Delete one of our own messages, for us and (if they're connected) for the recipient.
+export function deleteMyMessage(msgId) {
+    const user = state.activeChatUser;
+    if (!user) return;
+    if (!confirm('Delete this message for everyone?')) return;
+    removeMessage(user, msgId);
+    sendEncrypted({ user: state.myUsername, type: 'delete', target: user, id: msgId });
+}
+
+// Called from network.js when the other side deletes a message they sent us.
+export function handleDeleteMessage(data) {
+    const msg = state.chatHistory[data.user]?.find(m => m.id === data.id);
+    // Only honour deletes of messages that actually came from that sender.
+    if (!msg || msg.sender !== data.user) return;
+    removeMessage(data.user, data.id);
 }
 
 // --- SEND ---
@@ -285,28 +323,62 @@ $('fileInput').onchange = (e) => {
 // --- VOICE RECORDING ---
 
 let mediaRecorder, audioChunks = [];
+let recordingCancelled = false;
+let recTimer = null;
+let recStart = 0;
 
-$('recordBtn').onclick = async function () {
+function showRecordingUI() {
+    recStart = Date.now();
+    $('rec-timer').textContent = '0:00';
+    $('recording-indicator').style.display = 'flex';
+    $('messageInput').style.display = 'none';
+    $('attachBtn').style.display = 'none';
+    $('recordBtn').classList.add('recording-active');
+    recTimer = setInterval(() => {
+        const s = Math.floor((Date.now() - recStart) / 1000);
+        $('rec-timer').textContent = `${Math.floor(s / 60)}:${String(s % 60).padStart(2, '0')}`;
+    }, 250);
+}
+
+function hideRecordingUI() {
+    clearInterval(recTimer);
+    recTimer = null;
+    $('recording-indicator').style.display = 'none';
+    $('messageInput').style.display = '';
+    $('attachBtn').style.display = '';
+    $('recordBtn').classList.remove('recording-active');
+}
+
+$('recordBtn').onclick = async () => {
     if (mediaRecorder && mediaRecorder.state === 'recording') {
+        mediaRecorder.stop(); // onstop sends it
+        return;
+    }
+    try {
+        const s = await navigator.mediaDevices.getUserMedia({ audio: true });
+        mediaRecorder = new MediaRecorder(s);
+        audioChunks = [];
+        recordingCancelled = false;
+        mediaRecorder.ondataavailable = e => audioChunks.push(e.data);
+        mediaRecorder.onstop = () => {
+            hideRecordingUI();
+            s.getTracks().forEach(t => t.stop());
+            if (recordingCancelled) return;
+            const b = new Blob(audioChunks, { type: 'audio/webm' });
+            const r = new FileReader();
+            r.onload = () => send(r.result, 'audio');
+            r.readAsDataURL(b);
+        };
+        mediaRecorder.start();
+        showRecordingUI();
+    } catch (err) {
+        alert('Mic denied.');
+    }
+};
+
+$('cancelRecBtn').onclick = () => {
+    if (mediaRecorder && mediaRecorder.state === 'recording') {
+        recordingCancelled = true;
         mediaRecorder.stop();
-        this.classList.remove('recording-active');
-    } else {
-        try {
-            const s = await navigator.mediaDevices.getUserMedia({ audio: true });
-            mediaRecorder = new MediaRecorder(s);
-            audioChunks = [];
-            mediaRecorder.ondataavailable = e => audioChunks.push(e.data);
-            mediaRecorder.onstop = () => {
-                const b = new Blob(audioChunks, { type: 'audio/webm' });
-                const r = new FileReader();
-                r.onloadend = () => send(r.result, 'audio');
-                r.readAsDataURL(b);
-                s.getTracks().forEach(t => t.stop());
-            };
-            mediaRecorder.start();
-            this.classList.add('recording-active');
-        } catch (err) {
-            alert('Mic denied.');
-        }
     }
 };
