@@ -328,12 +328,14 @@ let recTimer = null;
 let recStart = 0;
 
 function showRecordingUI() {
+    $('recordBtn').classList.add('recording-active');
+    // Tolerate an out-of-date index.html that lacks the recording bar.
+    if (!$('recording-indicator')) return;
     recStart = Date.now();
     $('rec-timer').textContent = '0:00';
     $('recording-indicator').style.display = 'flex';
     $('messageInput').style.display = 'none';
     $('attachBtn').style.display = 'none';
-    $('recordBtn').classList.add('recording-active');
     recTimer = setInterval(() => {
         const s = Math.floor((Date.now() - recStart) / 1000);
         $('rec-timer').textContent = `${Math.floor(s / 60)}:${String(s % 60).padStart(2, '0')}`;
@@ -343,10 +345,11 @@ function showRecordingUI() {
 function hideRecordingUI() {
     clearInterval(recTimer);
     recTimer = null;
+    $('recordBtn').classList.remove('recording-active');
+    if (!$('recording-indicator')) return;
     $('recording-indicator').style.display = 'none';
     $('messageInput').style.display = '';
     $('attachBtn').style.display = '';
-    $('recordBtn').classList.remove('recording-active');
 }
 
 $('recordBtn').onclick = async () => {
@@ -376,7 +379,8 @@ $('recordBtn').onclick = async () => {
     }
 };
 
-$('cancelRecBtn').onclick = () => {
+const cancelRecBtn = $('cancelRecBtn');
+if (cancelRecBtn) cancelRecBtn.onclick = () => {
     if (mediaRecorder && mediaRecorder.state === 'recording') {
         recordingCancelled = true;
         mediaRecorder.stop();
