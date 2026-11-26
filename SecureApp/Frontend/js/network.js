@@ -4,7 +4,7 @@
 
 import { state } from './state.js';
 import { encrypt, decrypt } from './encryption.js';
-import { handlePing, handlePong, handleOnlineAnnouncement, handleOfflineAnnouncement, updateStatus } from './contacts.js';
+import { handlePing, handlePong, handleOnlineAnnouncement, handleOfflineAnnouncement, updateStatus, addContact } from './contacts.js';
 import { handleIncomingMessage, handleTyping, handleReadReceipt } from './chat.js';
 import { handleSignal } from './webrtc.js';
 
@@ -49,6 +49,10 @@ async function onMessage(e) {
         if (data.type === 'typing') {
             handleTyping(data.user);
         } else {
+            // Auto-add the sender so their message shows up without a manual
+            // "add contact" step. Must happen before updateStatus/handleIncomingMessage,
+            // which look up the contact's DOM element.
+            addContact(data.user);
             updateStatus(data.user, true);
             handleIncomingMessage(data);
         }
