@@ -192,7 +192,12 @@ export async function send(content, type = 'text', fname = '') {
     const time = formatTime();
     const msgId = makeMessageId();
 
-    await sendEncrypted({ user: state.myUsername, content, type, time, fname, target: state.activeChatUser, id: msgId });
+    try {
+        await sendEncrypted({ user: state.myUsername, content, type, time, fname, target: state.activeChatUser, id: msgId });
+    } catch (err) {
+        console.error('Send failed:', err);
+        return alert('Message failed to send.');
+    }
 
     saveMessage(state.activeChatUser, { id: msgId, sender: 'You', content, time, type, fname, status: 'sent' });
     renderMsg('You', content, 'my-message', time, type, fname, msgId, 'sent');
@@ -260,11 +265,20 @@ $('sendBtn').onclick = () => {
 $('messageInput').onkeydown = (e) => { if (e.key === 'Enter') $('sendBtn').click(); };
 
 $('attachBtn').onclick = () => $('fileInput').click();
+// Files are base64'd twice (data URL, then encrypted payload) so they grow ~1.8x,
+// and the server's WebSocket limit is 16MB by default. 5MB keeps us safely under.
+const MAX_FILE_BYTES = 5 * 1024 * 1024;
+
 $('fileInput').onchange = (e) => {
     const f = e.target.files[0];
+    e.target.value = ''; // lets the same file be picked again later
     if (!f) return;
+    if (f.size > MAX_FILE_BYTES) {
+        return alert(`File too large (${(f.size / 1024 / 1024).toFixed(1)} MB). Max is 5 MB.`);
+    }
     const r = new FileReader();
-    r.onloadend = () => send(r.result, 'file', f.name);
+    r.onload = () => send(r.result, 'file', f.name);
+    r.onerror = () => alert('Could not read that file.');
     r.readAsDataURL(f);
 };
 

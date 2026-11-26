@@ -15,7 +15,18 @@ export async function encrypt(text, keyStr) {
     comb.set(iv);
     comb.set(new Uint8Array(enc), iv.length);
 
-    return btoa(String.fromCharCode(...comb));
+    return bytesToBase64(comb);
+}
+
+// Spreading a large array into String.fromCharCode(...) overflows the call
+// stack (~100KB+), which silently broke file and voice messages. Convert in chunks.
+function bytesToBase64(bytes) {
+    const CHUNK = 0x8000;
+    let binary = '';
+    for (let i = 0; i < bytes.length; i += CHUNK) {
+        binary += String.fromCharCode.apply(null, bytes.subarray(i, i + CHUNK));
+    }
+    return btoa(binary);
 }
 
 export async function decrypt(data, keyStr) {
